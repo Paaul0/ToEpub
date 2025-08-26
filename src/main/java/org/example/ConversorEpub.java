@@ -26,13 +26,12 @@ public class ConversorEpub {
             metadata.addAuthor(new Author("Gerador", "Automático"));
 
             // 2. Adiciona a Capa Principal do Jornal (1.png)
-            File arquivoCapaPrincipal = new File("src/main/resources/Capas/1.png");
+            File arquivoCapaPrincipal = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\Capas\\1.png");
             if (arquivoCapaPrincipal.exists()) {
                 Resource coverResource = new Resource(new FileInputStream(arquivoCapaPrincipal), "cover.png");
                 livro.setCoverImage(coverResource);
-                System.out.println("Capa principal '1.png' adicionada aos metadados.");
+                System.out.println("Capa principal '1.png' adicionada aos metdados.");
 
-                // Adiciona a página da capa principal como primeira seção
                 String coverPageContent = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                         "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">" +
                         "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
@@ -45,23 +44,23 @@ public class ConversorEpub {
                 livro.addSection("Capa Principal", coverPageResource);
                 System.out.println("Página de capa principal (cover.xhtml) adicionada.");
             } else {
-                System.out.println("Aviso: Arquivo da capa principal '1.png' não encontrado.");
+                System.out.println("\n Aviso: Arquivo da capa principal '1.png' não encontrado.");
             }
 
             // 3. Carrega e limpa o HTML
-            File htmlInput = new File("src/main/resources/diario4.html");
+            File htmlInput = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\diario4_com_imagens.html");
             Document doc = Jsoup.parse(htmlInput, "UTF-8", "");
 
-            // Limpeza do HTML
             Safelist safelist = Safelist.relaxed()
-                    .addTags("figure", "span", "table", "tbody", "tr", "td")
-                    .addAttributes(":all", "style", "class")
+                    .addTags("figure", "span", "table", "tbody", "tr", "td", "div", "ul", "li", "a") // Adicionei tags para o sumário
+                    .addAttributes(":all", "style", "class", "id") // Adicionei 'id'
+                    .addAttributes("a", "href") // Adicionei 'href' para os links
                     .addAttributes("img", "src")
                     .addProtocols("img", "src", "data");
             doc = new Cleaner(safelist).clean(doc);
             doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(StandardCharsets.UTF_8);
 
-            // 4. Extrai o CSS (será usado em todas as páginas de conteúdo)
+            // 4. Extrai o CSS
             Resource cssResource = null;
             Element styleTag = doc.selectFirst("style");
             if (styleTag != null) {
@@ -70,9 +69,7 @@ public class ConversorEpub {
                 System.out.println("CSS interno extraído com sucesso.");
             }
 
-            // ===== INÍCIO DA NOVA LÓGICA DE PROCESSAMENTO POR SEÇÕES =====
-
-            // 5. Adiciona IDs únicos para todos os cabeçalhos para o Sumário
+            // 5. Adiciona IDs únicos para todos os cabeçalhos para os Sumários
             Elements allHeadings = doc.select("h1, h2");
             int headingIndex = 0;
             for (Element heading : allHeadings) {
@@ -90,8 +87,8 @@ public class ConversorEpub {
             for (Element h1 : sectionsH1) {
                 System.out.println("\n--- Processando Seção " + sectionCounter + ": " + h1.text() + " ---");
 
-                // 6.1. Adiciona a CAPA DA SEÇÃO (2.png, 3.png, etc.)
-                String capaSecaoPath = "src/main/resources/Capas/" + (sectionCounter + 1) + ".png";
+                // 6.1. Adiciona a CAPA DA SEÇÃO
+                String capaSecaoPath = "C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\Capas\\" + (sectionCounter + 1) + ".png";
                 File arquivoCapaSecao = new File(capaSecaoPath);
                 if (arquivoCapaSecao.exists()) {
                     String epubCapaHref = "capa_secao_" + sectionCounter + ".png";
@@ -111,16 +108,42 @@ public class ConversorEpub {
                     System.out.println("Aviso: Capa da seção '" + (sectionCounter + 1) + ".png' não encontrada.");
                 }
 
-                // 6.2. Extrai o CONTEÚDO DA SEÇÃO (do H1 atual até o próximo H1)
-                StringBuilder sectionHtml = new StringBuilder();
-                sectionHtml.append(h1.outerHtml());
+                // 6.2. Extrai o CONTEÚDO DA SEÇÃO
+                StringBuilder sectionHtmlBuilder = new StringBuilder();
+                sectionHtmlBuilder.append(h1.outerHtml());
                 Element nextElement = h1.nextElementSibling();
                 while (nextElement != null && !nextElement.tagName().equalsIgnoreCase("h1")) {
-                    sectionHtml.append(nextElement.outerHtml());
+                    sectionHtmlBuilder.append(nextElement.outerHtml());
                     nextElement = nextElement.nextElementSibling();
                 }
 
-                // 6.3. Cria a página XHTML para o CONTEÚDO DA SEÇÃO
+                // ===== INÍCIO DA MODIFICAÇÃO: CRIA E INJETA O SUMÁRIO DA SEÇÃO =====
+
+                // 6.3. Analisa o HTML da seção para encontrar os H2s
+                Document sectionDoc = Jsoup.parseBodyFragment(sectionHtmlBuilder.toString());
+                Elements h2sInSection = sectionDoc.select("h2");
+
+                // 6.4. Se houver H2s, cria o HTML do sumário
+                if (!h2sInSection.isEmpty()) {
+                    System.out.println("Gerando sumário interno para " + h2sInSection.size() + " subtítulos (H2).");
+                    StringBuilder miniTocHtml = new StringBuilder();
+                    miniTocHtml.append("<div class=\"sumario-secao\"><ul>\n");
+
+                    for (Element h2 : h2sInSection) {
+                        miniTocHtml.append("<li><a href=\"#").append(h2.id()).append("\">")
+                                .append(h2.text()).append("</a></li>\n");
+                    }
+                    miniTocHtml.append("</ul></div>");
+
+                    // 6.5. Injeta o sumário logo após o H1 dentro do documento da seção
+                    Element h1InSec = sectionDoc.selectFirst("h1");
+                    if (h1InSec != null) {
+                        h1InSec.after(miniTocHtml.toString());
+                    }
+                }
+                // ===== FIM DA MODIFICAÇÃO =====
+
+                // 6.6. Cria a página XHTML para o CONTEÚDO DA SEÇÃO (agora com o sumário injetado)
                 StringBuilder xhtmlContent = new StringBuilder();
                 xhtmlContent.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
                         .append("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">\n")
@@ -129,33 +152,34 @@ public class ConversorEpub {
                 if (cssResource != null) {
                     xhtmlContent.append("<link rel=\"stylesheet\" type=\"text/css\" href=\"").append(cssResource.getHref()).append("\" />");
                 }
-                xhtmlContent.append("</head>\n<body>\n").append(sectionHtml.toString()).append("</body>\n</html>");
+                // Adicionando um estilo básico para o sumário da seção
+                xhtmlContent.append("<style>.sumario-secao { border: 1px solid #ccc; padding: 10px; margin: 15px 0; background-color: #f9f9f9; } .sumario-secao ul { list-style-type: none; padding-left: 0; } </style>");
+                xhtmlContent.append("</head>\n<body>\n")
+                        // Usa o HTML modificado do sectionDoc que agora contém o sumário
+                        .append(sectionDoc.body().html())
+                        .append("</body>\n</html>");
 
                 String secaoHref = "secao_" + sectionCounter + ".xhtml";
                 Resource secaoResource = new Resource(xhtmlContent.toString().getBytes(StandardCharsets.UTF_8), secaoHref);
                 livro.addSection(h1.text(), secaoResource);
                 System.out.println("Conteúdo da seção adicionado como '" + secaoHref + "'.");
 
-                // 6.4. Constrói o SUMÁRIO para esta seção
+                // 6.7. Constrói o SUMÁRIO PRINCIPAL para esta seção
                 TOCReference h1Ref = toc.addTOCReference(new TOCReference(h1.text(), secaoResource, h1.id()));
-                System.out.println("TOC: Adicionado H1 -> " + h1.text());
+                System.out.println("TOC Principal: Adicionado H1 -> " + h1.text());
 
-                // Encontra os H2s dentro do HTML desta seção para criar a hierarquia
-                Document sectionDoc = Jsoup.parseBodyFragment(sectionHtml.toString());
-                for (Element h2 : sectionDoc.select("h2")) {
+                for (Element h2 : h2sInSection) { // Reutiliza os H2s já encontrados
                     h1Ref.getChildren().add(new TOCReference(h2.text(), secaoResource, h2.attr("id")));
-                    System.out.println("TOC: Adicionado H2 -> " + h2.text());
+                    System.out.println("TOC Principal: Adicionado H2 -> " + h2.text());
                 }
 
                 sectionCounter++;
             }
 
-            // ===== FIM DA NOVA LÓGICA =====
-
             // 7. Escreve o arquivo EPUB
             EpubWriter epubWriter = new EpubWriter();
-            epubWriter.write(livro, new FileOutputStream("jornal_oficial_com_secoes.epub"));
-            System.out.println("\nEPUB gerado com sucesso: jornal_oficial_com_secoes.epub");
+            epubWriter.write(livro, new FileOutputStream("jornal_oficial_final.epub"));
+            System.out.println("\nEPUB gerado com sucesso: jornal_oficial_final.epub");
 
         } catch (IOException e) {
             e.printStackTrace();
