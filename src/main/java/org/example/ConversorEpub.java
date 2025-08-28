@@ -48,7 +48,7 @@ public class ConversorEpub {
             }
 
             // 3. Carrega e limpa o HTML
-            File htmlInput = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\diario4_com_imagens.html");
+            File htmlInput = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\diario10.html");
             Document doc = Jsoup.parse(htmlInput, "UTF-8", "");
 
             Safelist safelist = Safelist.relaxed()
@@ -122,12 +122,16 @@ public class ConversorEpub {
                 // 6.3. Analisa o HTML da seção para encontrar os H2s
                 Document sectionDoc = Jsoup.parseBodyFragment(sectionHtmlBuilder.toString());
                 Elements h2sInSection = sectionDoc.select("h2");
+                sectionDoc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
 
                 // 6.4. Se houver H2s, cria o HTML do sumário
                 if (!h2sInSection.isEmpty()) {
                     System.out.println("Gerando sumário interno para " + h2sInSection.size() + " subtítulos (H2).");
                     StringBuilder miniTocHtml = new StringBuilder();
-                    miniTocHtml.append("<div class=\"sumario-secao\"><ul>\n");
+                    // Adicionamos uma classe para o título para poder estilizá-lo
+                    miniTocHtml.append("<div class=\"sumario-secao\">")
+                            .append("<p class=\"sumario-titulo\">Sumário da seção:</p>") // <-- TÍTULO ADICIONADO
+                            .append("<ul>\n");
 
                     for (Element h2 : h2sInSection) {
                         miniTocHtml.append("<li><a href=\"#").append(h2.id()).append("\">")
@@ -153,7 +157,43 @@ public class ConversorEpub {
                     xhtmlContent.append("<link rel=\"stylesheet\" type=\"text/css\" href=\"").append(cssResource.getHref()).append("\" />");
                 }
                 // Adicionando um estilo básico para o sumário da seção
-                xhtmlContent.append("<style>.sumario-secao { border: 1px solid #ccc; padding: 10px; margin: 15px 0; background-color: #f9f9f9; } .sumario-secao ul { list-style-type: none; padding-left: 0; } </style>");
+                xhtmlContent.append("<style>" +
+                        "    .sumario-secao { " +
+                        "    column-count: 2;\n" +
+                        "    column-rule: 1px solid #434444;\n" +
+                        "    background-color: #f5f5f5;\n" +
+                        "    padding: 20px;\n" +
+                        "    font-size: 12px;\n" +
+                        "    border-radius: 8px;\n" +
+                        "    border: 1px solid #e0e0e0;\n" +
+                        "    margin: 25px 0;\n }" +
+
+                        "    .sumario-secao ul { " +
+                        "    list-style-type: none; \n" +
+                        "    padding-left: 0; \n" +
+                        "    margin: 0; } " +
+
+                        "    .sumario-titulo { " +
+                        "     font-weight: bold; " +
+                        "     font-size: 1.1em; " +
+                        "     margin-top: 0; " +
+                        "     margin-bottom: 15px; " +
+                        "     padding-bottom: 10px; " +
+                        "     border-bottom: 1px solid #d0d0d0; " +
+                        "     column-span: all; " +
+                        "    } " +
+
+                        "    .sumario-secao li { " +
+                        "    padding-bottom: 12px; } " +
+
+                        "    .sumario-secao li a { " +
+                        "    text-decoration: none;" +
+                        "    color: #424242; font-size: 0.95em; } " +
+
+                        "    .sumario-secao li a:hover { " +
+                        "    color: #000000; " +
+                        "    text-decoration: underline; } " +
+                        "</style>");
                 xhtmlContent.append("</head>\n<body>\n")
                         // Usa o HTML modificado do sectionDoc que agora contém o sumário
                         .append(sectionDoc.body().html())
