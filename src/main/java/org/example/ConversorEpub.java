@@ -14,10 +14,23 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ConversorEpub {
 
     public static void main(String[] args) {
+
+        Map<String, String> mapaDeCapas = new HashMap<>();
+        mapaDeCapas.put("atos do executivo", "2.png");
+        mapaDeCapas.put("concursos", "3.png");
+        mapaDeCapas.put("editais", "4.png");
+        mapaDeCapas.put("negócios", "5.png");
+        mapaDeCapas.put("servidores", "6.png");
+        mapaDeCapas.put("atos da cmsp", "7.png");
+        mapaDeCapas.put("atos do tcm-sp", "8.png");
+
+
         try {
             // 1. Inicializa o objeto EPUB
             Book livro = new Book();
@@ -87,25 +100,43 @@ public class ConversorEpub {
             for (Element h1 : sectionsH1) {
                 System.out.println("\n--- Processando Seção " + sectionCounter + ": " + h1.text() + " ---");
 
-                // 6.1. Adiciona a CAPA DA SEÇÃO
-                String capaSecaoPath = "C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\Capas\\" + (sectionCounter + 1) + ".png";
-                File arquivoCapaSecao = new File(capaSecaoPath);
-                if (arquivoCapaSecao.exists()) {
-                    String epubCapaHref = "capa_secao_" + sectionCounter + ".png";
-                    Resource capaSecaoResource = new Resource(new FileInputStream(arquivoCapaSecao), epubCapaHref);
-                    livro.addResource(capaSecaoResource);
+                // 6.1. Adiciona a CAPA DA SEÇÃO de forma dinâmica
+                String h1TextoNormalizado = h1.text().toLowerCase(); // Pega o título do H1 e converte para minúsculas
+                String nomeArquivoCapa = null;
 
-                    String capaSecaoPageContent = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
-                            "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">" +
-                            "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
-                            "<head><title>Capa da Seção</title><style type=\"text/css\"> body { margin: 0; padding: 0; text-align: center; } img { max-width: 100%; height: 100vh; object-fit: contain; } </style></head>" +
-                            "<body><img src=\"" + epubCapaHref + "\" alt=\"Capa da Seção\"/></body></html>";
+// Procura no mapa se algum texto chave corresponde ao título da seção
+                for (Map.Entry<String, String> entry : mapaDeCapas.entrySet()) {
+                    if (h1TextoNormalizado.contains(entry.getKey())) {
+                        nomeArquivoCapa = entry.getValue();
+                        break; // Encontrou a capa, pode parar de procurar
+                    }
+                }
 
-                    Resource capaSecaoPageResource = new Resource(capaSecaoPageContent.getBytes(StandardCharsets.UTF_8), "pagina_capa_secao_" + sectionCounter + ".xhtml");
-                    livro.addSection("Capa da Seção " + sectionCounter, capaSecaoPageResource);
-                    System.out.println("Capa '" + (sectionCounter + 1) + ".png' adicionada para esta seção.");
+// Se encontrou um nome de arquivo no mapa, tenta adicionar a capa
+                if (nomeArquivoCapa != null) {
+                    String basePath = "C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\Capas\\";
+                    File arquivoCapaSecao = new File(basePath + nomeArquivoCapa);
+
+                    if (arquivoCapaSecao.exists()) {
+                        String epubCapaHref = "capa_secao_" + sectionCounter + ".png"; // Nome único dentro do epub
+                        Resource capaSecaoResource = new Resource(new FileInputStream(arquivoCapaSecao), epubCapaHref);
+                        livro.addResource(capaSecaoResource);
+
+                        String capaSecaoPageContent = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                                "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">" +
+                                "<html xmlns=\"http://www.w3.org/1999/xhtml\">" +
+                                "<head><title>Capa da Seção</title><style type=\"text...\">...</style></head>" +
+                                "<body><img src=\"" + epubCapaHref + "\" alt=\"Capa da Seção\"/></body></html>";
+
+                        Resource capaSecaoPageResource = new Resource(capaSecaoPageContent.getBytes(StandardCharsets.UTF_8), "pagina_capa_secao_" + sectionCounter + ".xhtml");
+                        livro.addResource(capaSecaoPageResource);
+                        livro.getSpine().addResource(capaSecaoPageResource);
+                        System.out.println("Capa '" + nomeArquivoCapa + "' adicionada para a seção '" + h1.text() + "'.");
+                    } else {
+                        System.out.println("Aviso: Capa '" + nomeArquivoCapa + "' mapeada, mas arquivo não encontrado.");
+                    }
                 } else {
-                    System.out.println("Aviso: Capa da seção '" + (sectionCounter + 1) + ".png' não encontrada.");
+                    System.out.println("Aviso: Nenhuma capa mapeada para a seção '" + h1.text() + "'.");
                 }
 
                 // 6.2. Extrai o CONTEÚDO DA SEÇÃO
@@ -201,16 +232,22 @@ public class ConversorEpub {
 
                 String secaoHref = "secao_" + sectionCounter + ".xhtml";
                 Resource secaoResource = new Resource(xhtmlContent.toString().getBytes(StandardCharsets.UTF_8), secaoHref);
-                livro.addSection(h1.text(), secaoResource);
+                livro.addResource(secaoResource);
+// Passo 2: Adiciona o arquivo XHTML da seção à ordem de leitura (espinha).
+                livro.getSpine().addResource(secaoResource);
                 System.out.println("Conteúdo da seção adicionado como '" + secaoHref + "'.");
 
-                // 6.7. Constrói o SUMÁRIO PRINCIPAL para esta seção
-                TOCReference h1Ref = toc.addTOCReference(new TOCReference(h1.text(), secaoResource, h1.id()));
+// Passo 3: Cria a ÚNICA entrada para o H1 no sumário.
+                TOCReference h1Ref = new TOCReference(h1.text(), secaoResource, h1.id());
+                toc.addTOCReference(h1Ref);
                 System.out.println("TOC Principal: Adicionado H1 -> " + h1.text());
 
                 for (Element h2 : h2sInSection) { // Reutiliza os H2s já encontrados
-                    h1Ref.getChildren().add(new TOCReference(h2.text(), secaoResource, h2.attr("id")));
-                    System.out.println("TOC Principal: Adicionado H2 -> " + h2.text());
+                    // SÓ ADICIONA O H2 SE O TEXTO DELE FOR DIFERENTE DO H1
+                    if (!h2.text().equalsIgnoreCase(h1.text())) {
+                        h1Ref.getChildren().add(new TOCReference(h2.text(), secaoResource, h2.attr("id")));
+                        System.out.println("TOC Principal: Adicionado H2 -> " + h2.text());
+                    }
                 }
 
                 sectionCounter++;
