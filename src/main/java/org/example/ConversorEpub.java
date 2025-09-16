@@ -8,7 +8,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.safety.Cleaner;
 import org.jsoup.safety.Safelist;
 import org.jsoup.select.Elements;
-
+import java.time.LocalDate;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -16,6 +16,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import nl.siegmann.epublib.domain.Date;
+import nl.siegmann.epublib.domain.Identifier;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.UUID;
 
 public class ConversorEpub {
 
@@ -35,8 +40,15 @@ public class ConversorEpub {
             // 1. Inicializa o objeto EPUB
             Book livro = new Book();
             Metadata metadata = livro.getMetadata();
-            metadata.addTitle("Diário Oficial - Edição de 08 de Agosto de 2025");
-            metadata.addAuthor(new Author("Gerador", "Automático"));
+            // Usamos um UUID para garantir que seja sempre único.
+            metadata.getIdentifiers().add(new Identifier(Identifier.Scheme.UUID, UUID.randomUUID().toString()));
+            metadata.addTitle("Diário Oficial de São Paulo");
+            metadata.addAuthor(new Author("Prefeitura", "de São Paulo"));
+            metadata.getPublishers().add("SEGES/ARQUIP");
+            metadata.getDescriptions().add("Edição digital do Diário Oficial de São Paulo ");
+            LocalDate hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+            metadata.getDates().add(new Date(java.util.Date.from(hoje.atStartOfDay(ZoneId.systemDefault()).toInstant()), Date.Event.PUBLICATION));
+            metadata.setLanguage("pt-BR");
 
             // 2. Adiciona a Capa Principal do Jornal (1.png)
             File arquivoCapaPrincipal = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\Capas\\1.png");
@@ -60,8 +72,21 @@ public class ConversorEpub {
                 System.out.println("\n Aviso: Arquivo da capa principal '1.png' não encontrado.");
             }
 
+            // =================== INÍCIO DO BLOCO DO EDITORIAL ===================
+            System.out.println("\n--- Criando Página de Editorial ---");
+            // 1. Cria uma instância do nosso novo gerador, passando a data atual.
+            GeradorPaginaEditorial geradorEditorial = new GeradorPaginaEditorial(LocalDate.now());
+            // 2. Chama o método para obter o HTML. A variável agora contém o resultado.
+            String conteudoEditorial = geradorEditorial.gerarHtml();
+            // 3. O resto do código continua igual, usando a variável com o conteúdo.
+            Resource editorialResource = new Resource(conteudoEditorial.getBytes(StandardCharsets.UTF_8), "editorial.xhtml");
+            livro.addResource(editorialResource);
+            livro.getSpine().addResource(editorialResource);
+            System.out.println("Página de editorial adicionada com sucesso.");
+            // =================== FIM DO BLOCO DO EDITORIAL ===================
+
             // 3. Carrega e limpa o HTML
-            File htmlInput = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\diario10.html");
+            File htmlInput = new File("C:\\Users\\x396757\\OneDrive - rede.sp\\Área de Trabalho\\ToEpub\\ToEpub\\src\\main\\resources\\diarioexpe_com_imagens.html");
             Document doc = Jsoup.parse(htmlInput, "UTF-8", "");
 
             Safelist safelist = Safelist.relaxed()
@@ -101,6 +126,7 @@ public class ConversorEpub {
                 System.out.println("\n--- Processando Seção " + sectionCounter + ": " + h1.text() + " ---");
 
                 // 6.1. Adiciona a CAPA DA SEÇÃO de forma dinâmica
+                Resource capaSecaoPageResource = null;
                 String h1TextoNormalizado = h1.text().toLowerCase(); // Pega o título do H1 e converte para minúsculas
                 String nomeArquivoCapa = null;
 
@@ -128,7 +154,7 @@ public class ConversorEpub {
                                 "<head><title>Capa da Seção</title><style type=\"text...\">...</style></head>" +
                                 "<body><img src=\"" + epubCapaHref + "\" alt=\"Capa da Seção\"/></body></html>";
 
-                        Resource capaSecaoPageResource = new Resource(capaSecaoPageContent.getBytes(StandardCharsets.UTF_8), "pagina_capa_secao_" + sectionCounter + ".xhtml");
+                        capaSecaoPageResource = new Resource(capaSecaoPageContent.getBytes(StandardCharsets.UTF_8), "pagina_capa_secao_" + sectionCounter + ".xhtml");
                         livro.addResource(capaSecaoPageResource);
                         livro.getSpine().addResource(capaSecaoPageResource);
                         System.out.println("Capa '" + nomeArquivoCapa + "' adicionada para a seção '" + h1.text() + "'.");
@@ -238,7 +264,16 @@ public class ConversorEpub {
                 System.out.println("Conteúdo da seção adicionado como '" + secaoHref + "'.");
 
 // Passo 3: Cria a ÚNICA entrada para o H1 no sumário.
-                TOCReference h1Ref = new TOCReference(h1.text(), secaoResource, h1.id());
+                TOCReference h1Ref;
+                if (capaSecaoPageResource != null) {
+                    // Se a capa da seção EXISTE, o link principal do sumário aponta para a PÁGINA DA CAPA.
+                    h1Ref = new TOCReference(h1.text(), capaSecaoPageResource);
+                    System.out.println("TOC Principal: Link do H1 '" + h1.text() + "' aponta para a capa da seção.");
+                } else {
+                    // Se NÃO EXISTE capa, o link aponta para o título na página de conteúdo (comportamento antigo).
+                    h1Ref = new TOCReference(h1.text(), secaoResource, h1.id());
+                    System.out.println("TOC Principal: Link do H1 '" + h1.text() + "' aponta para o conteúdo (sem capa).");
+                }
                 toc.addTOCReference(h1Ref);
                 System.out.println("TOC Principal: Adicionado H1 -> " + h1.text());
 
@@ -255,7 +290,7 @@ public class ConversorEpub {
 
             // 7. Escreve o arquivo EPUB
             EpubWriter epubWriter = new EpubWriter();
-            epubWriter.write(livro, new FileOutputStream("jornal_oficial_final.epub"));
+            epubWriter.write(livro, new FileOutputStream("teste.epub"));
             System.out.println("\nEPUB gerado com sucesso: jornal_oficial_final.epub");
 
         } catch (IOException e) {
